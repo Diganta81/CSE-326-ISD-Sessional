@@ -1,0 +1,503 @@
+openapi: 3.0.0
+info:
+  title: Trip.com Clone - Hotel Service and Availability API
+  version: 2.1.0
+  description: >
+    Hotel Service responsible for hotel discovery, filtering,
+    hotel detail retrieval, room availability, and reviews.
+    Role-based access:
+      - Guests: search & filter only
+      - Registered Users: search, filter, check availability, view & manage favourites
+      - Admin: manage hotels & reviews
+
+servers:
+  - url: http://localhost:8000/v1/hotels
+    description: Local development server
+  - url: https://api.tripclone.com/v1/hotels
+    description: Production server
+
+tags:
+  - name: Public Search
+  - name: Hotel Details
+  - name: Reviews
+  # - name: Favourites (Registered Only)
+  - name: Admin - Hotels
+  - name: Admin - Reviews
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+
+    SearchResponse:
+      type: object
+      properties:
+        search_id: { type: string }
+        total_found: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+        total_pages: { type: integer }
+        hotels:
+          type: array
+          items:
+            $ref: '#/components/schemas/HotelSummary'
+
+    HotelSummary:
+      type: object
+      properties:
+        hotel_id: { type: integer }
+        name: { type: string }
+        rating: { type: number }
+        star_rating: { type: integer }
+        price_per_night: { type: number }
+        currency: { type: string }
+        thumbnail: { type: string }
+        review_count: { type: integer }
+        free_cancellation: { type: boolean }
+
+    # AdvancedFilterRequest:
+    #   type: object
+    #   required: [search_id]
+    #   properties:
+    #     search_id: { type: string }
+    #     min_price: { type: number }
+    #     max_price: { type: number }
+    #     star_rating:
+    #       type: array
+    #       items: { type: integer }
+    #     property_type:
+    #       type: array
+    #       items: { type: string }
+    #     amenities:
+    #       type: array
+    #       items: { type: string }
+    #     guest_rating: { type: number }
+    #     free_cancellation: { type: boolean }
+    #     page: { type: integer, default: 1 }
+    #     size: { type: integer, default: 20 }
+
+    HotelDetailResponse:
+      type: object
+      properties:
+        hotel:
+          $ref: '#/components/schemas/HotelInfo'
+        availability_context:
+          $ref: '#/components/schemas/AvailabilityContext'
+        rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomAvailability'
+        amenities:
+          type: array
+          items: { type: string }
+        policies:
+          $ref: '#/components/schemas/HotelPolicies'
+        review_summary:
+          $ref: '#/components/schemas/ReviewSummary'
+
+    HotelInfo:
+      type: object
+      properties:
+        hotel_id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        city: { type: string }
+        country: { type: string }
+        star_rating: { type: integer }
+        rating: { type: number }
+        review_count: { type: integer }
+        latitude: { type: number }
+        longitude: { type: number }
+        images:
+          type: array
+          items: { type: string }
+    AdminHotelListResponse:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total_pages: { type: integer }
+        total_hotels: { type: integer }
+        hotels:
+          type: array
+          items:
+            $ref: '#/components/schemas/HotelInfo'
+    AvailabilityContext:
+      type: object
+      properties:
+        checkin: { type: string, format: date }
+        checkout: { type: string, format: date }
+        nights: { type: integer }
+        rooms_requested: { type: integer }
+        adults: { type: integer }
+        children: { type: integer }
+
+    RoomAvailability:
+      type: object
+      properties:
+        room_type_id: { type: integer }
+        room_name: { type: string }
+        max_occupancy: { type: integer }
+        available_rooms: { type: integer }
+        price_per_night: { type: number }
+        total_price: { type: number }
+        currency: { type: string }
+        free_cancellation: { type: boolean }
+        cancellation_deadline:
+          type: string
+          format: date-time
+    AdminHotelUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        address: { type: string }
+        city: { type: string }
+        country: { type: string }
+        star_rating: { type: integer }
+        amenities:
+          type: array
+          items: { type: string }
+        images:
+          type: array
+          items: { type: string }
+        policies:
+          $ref: '#/components/schemas/HotelPolicies'
+      required: [name, address, city, country]
+
+    HotelPolicies:
+      type: object
+      properties:
+        checkin_time: { type: string }
+        checkout_time: { type: string }
+        cancellation_policy: { type: string }
+        child_policy: { type: string }
+        pet_policy: { type: string }
+
+    ReviewSummary:
+      type: object
+      properties:
+        average_rating: { type: number }
+        total_reviews: { type: integer }
+
+    PaginatedReviews:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total_pages: { type: integer }
+        total_reviews: { type: integer }
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+
+    Review:
+      type: object
+      properties:
+        review_id: { type: integer }
+        user_name: { type: string }
+        rating: { type: number }
+        comment: { type: string }
+        created_at:
+          type: string
+          format: date-time    
+
+paths:
+  /discover:
+    get:
+      summary: Initial Hotel Search
+      tags: [Public Search]
+
+      description: Returns a broad list of hotels based on destination and stay details.
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema: { type: string }
+        - name: checkin
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: checkout
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: rooms
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: adults
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: children
+          in: query
+          schema: { type: integer, default: 0, minimum: 0 }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [price, rating, popularity]
+            default: popularity
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of hotels
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400': { description: Invalid parameters }
+        '500': { description: Internal server error }
+
+  /filter:
+    get:
+      summary: Apply Advanced Filters
+      tags: [Public Search]
+      description: Refines the initial search results based on user preferences.
+      parameters:
+        - name: search_id
+          in: query
+          required: true
+          schema: { type: string }
+          description: Opaque search session token from GET /discover (TTL 30 min)
+        - name: min_price
+          in: query
+          schema: { type: number }
+        - name: max_price
+          in: query
+          schema: { type: number }
+        - name: star_rating
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: integer }
+          description: Multi-value e.g. ?star_rating=3&star_rating=4&star_rating=5
+        - name: property_type
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string }
+        - name: amenities
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string }
+        - name: guest_rating
+          in: query
+          schema: { type: number }
+          description: Minimum guest rating threshold
+        - name: free_cancellation
+          in: query
+          schema: { type: boolean }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Filtered hotels
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400': { description: Invalid filter request }
+        '500': { description: Internal server error }
+
+  /{hotel_id}:
+    get:
+      summary: Get Hotel Details and Room Availability
+      tags: [Hotel Details]
+      description: >
+        Triggered when a user clicks "Check Availability".
+        Returns hotel details, amenities, policies, room availability, and pricing.
+      parameters:
+        - name: hotel_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: checkin
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: checkout
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: rooms
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: adults
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: children
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Hotel detail with availability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotelDetailResponse'
+        '404': { description: Hotel not found }
+        '400': { description: Invalid date range }
+        '500': { description: Internal server error }
+
+  /{hotel_id}/reviews:
+    get:
+      summary: Get Hotel Reviews
+      tags: [Reviews]
+      description: Returns paginated reviews for a hotel (read-only).
+      parameters:
+        - name: hotel_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        '200':
+          description: Paginated reviews
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReviews'
+        '404': { description: Hotel not found }
+        '500': { description: Internal server error }
+
+  # /users/me/favourites:
+  #   get:
+  #     summary: Get My Favourite Hotels
+  #     tags: 
+  #       - Favourites (Registered Only)
+  #     description: >
+  #       Returns the favourites of the currently logged-in user.
+  #       **Access:** Registered users only. Guests and admin are not allowed.
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       '200':
+  #         description: List of favourite hotels
+  #         content:
+  #           application/json:
+  #             schema:
+  #               type: array
+  #               items:
+  #                 $ref: '#/components/schemas/HotelSummary'
+  #       '401': { description: Unauthorized — guest users }
+  #       '403': { description: Forbidden — non-user roles }
+  # /users/me/favourites/{hotel_id}:
+  #   post:
+  #     tags: [Favourites (Registered Only)]
+  #     summary: Add Hotel to Favourites
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       '200':
+  #         description: Hotel added to favourites
+
+  #   delete:
+  #     tags: [Favourites (Registered Only)]
+  #     summary: Remove Hotel from Favourites
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       '200':
+  #         description: Hotel removed from favourites
+  /admin/hotels:
+    get:
+      summary: Admin - List All Hotels
+      tags: [Admin - Hotels]
+      description: Admin can view all hotels in the system.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Paginated list of hotels
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHotelListResponse'
+        '403': { description: Forbidden — non-admin }
+
+  /admin/hotels/{hotel_id}:
+    put:
+      summary: Admin - Update Hotel
+      tags: [Admin - Hotels]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hotel_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminHotelUpdate'
+      responses:
+        '200': { description: Hotel updated successfully }
+        '400': { description: Invalid input }
+        '403': { description: Forbidden — non-admin }
+        '404': { description: Hotel not found }
+
+    delete:
+      summary: Admin - Delete Hotel
+      tags: [Admin - Hotels]
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { description: Hotel deleted successfully }
+        '403': { description: Forbidden — non-admin }
+        '404': { description: Hotel not found }
+
+  # /admin/reviews:
+  #   get:
+  #     summary: Admin - Get All Reviews
+      
+  #     tags: [Admin - Reviews]
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       '200': { description: List of reviews }
+  #       '403': { description: Forbidden — non-admin }
+
+  # /admin/reviews/{review_id}:
+  #   delete:
+  #     summary: Admin - Delete / Moderate Review
+  #     tags: [Admin - Reviews]
+  #     security:
+  #       - bearerAuth: []
+  #     responses:
+  #       '200': { description: Review deleted }
+  #       '403': { description: Forbidden — non-admin }
+  #       '404': { description: Review not found }

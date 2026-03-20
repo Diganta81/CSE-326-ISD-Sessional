@@ -1,0 +1,320 @@
+openapi: 3.0.0
+info:
+  title: Trip.com Clone - Booking Service API
+  description: 
+    Booking Service for Hotel Module.
+    Handles reservation initialization, payment confirmation,
+    cancellation, refunds, and admin booking management.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8000/v1/booking
+    description: Local server
+
+  - url: https://api.tripclone.com/v1/booking
+    description: Production server
+
+paths:
+  /bookings:
+    post:
+      summary: Initialize Reservation
+      security:
+        - bearerAuth: []
+      
+      description: 
+        Creates a booking in INITIATED state and locks the room temporarily.
+        Reservation expires automatically if not confirmed within expiry window.
+      tags:
+        - Guest Booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreate'
+      responses:
+        '201':
+          description: Reservation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '409':
+          description: Room not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request
+
+  /bookings/{booking_id}:
+    get:
+      summary: Get Booking Details
+      security:
+        - bearerAuth: []
+      
+      tags:
+        - Guest Booking
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Booking details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingDetails'
+        '403':
+          description: Forbidden — authenticated user is not the owner of this booking
+        '404':
+          description: Booking not found
+
+    delete:
+      summary: Cancel Booking
+      security:
+        - bearerAuth: []
+      description: 
+        Cancels booking and processes refund based on policy.
+        If within 30-minute window, full refund is applied.
+      tags:
+        - Guest Booking
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancellation processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationResponse'
+        '404':
+          description: Booking not found
+        '400':
+          description: Cancellation not allowed
+
+  /bookings/{booking_id}/confirm:
+    post:
+      summary: Confirm Booking with Payment
+      security:
+        - bearerAuth: []
+      description: 
+        Finalizes booking after successful payment validation.
+      tags:
+        - Guest Booking
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInfo'
+      responses:
+        '200':
+          description: Booking confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingDetails'
+        '402':
+          description: Payment failed
+        '409':
+          description: Reservation expired
+
+  /admin/bookings:
+    get:
+      summary: List All Bookings (Admin)
+      security:
+        - bearerAuth: []
+      description: >
+        Allows admin to retrieve bookings with filtering options.
+      tags:
+        - Admin
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: hotel_id
+          in: query
+          schema:
+            type: integer
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            example: 20
+      responses:
+        '200':
+          description: Paginated list of bookings
+
+  /admin/bookings/{booking_id}:
+    get:
+      summary: Get Booking Details (Admin)
+      security:
+        - bearerAuth: []
+      tags:
+        - Admin
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Booking details retrieved
+        '404':
+          description: Not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+
+    BookingCreate:
+      type: object
+      required:
+        - hotel_id
+        - room_id
+        - check_in_date
+        - check_out_date
+        - guests
+        - first_name
+        - last_name
+        - email
+        - phone_number
+      properties:
+        hotel_id:
+          type: integer
+        room_id:
+          type: integer
+        check_in_date:
+          type: string
+          format: date
+        check_out_date:
+          type: string
+          format: date
+        guests:
+          type: integer
+          example: 2
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone_number:
+          type: string
+        special_requests:
+          type: string
+        promo_code:
+          type: string
+
+    PaymentInfo:
+      type: object
+      required:
+        - payment_token
+      properties:
+        payment_token:
+          type: string
+          description: Token generated by external payment gateway
+
+    BookingResponse:
+      type: object
+      properties:
+        booking_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - INITIATED
+            - PAYMENT_PENDING
+            - CONFIRMED
+            - CANCELLED
+            - REFUNDED
+            - EXPIRED
+        total_price:
+          type: number
+        currency:
+          type: string
+          example: USD
+        expires_at:
+          type: string
+          format: date-time
+
+    BookingDetails:
+      allOf:
+        - $ref: '#/components/schemas/BookingResponse'
+        - type: object
+          properties:
+            hotel_id:
+              type: integer
+            room_id:
+              type: integer
+            check_in_date:
+              type: string
+              format: date
+            check_out_date:
+              type: string
+              format: date
+            guests:
+              type: integer
+
+    CancellationResponse:
+      type: object
+      properties:
+        booking_id:
+          type: string
+        status:
+          type: string
+        refund_amount:
+          type: number
+        refund_status:
+          type: string
+          enum:
+            - PROCESSING
+            - COMPLETED
+            - NOT_ELIGIBLE
+        cancelled_at:
+          type: string
+          format: date-time    
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        error_code:
+          type: string        
